@@ -28,6 +28,7 @@ public class MainActivity extends Activity implements UpdaterListener, DeltaCall
 	private Button installButton, chooseButton;
 	private ProgressBar progressBar;
 
+	private int secretMenuTaps = 0;
 	private boolean postInstall = false, doPersistMagisk = false;
 
 	private String filePath = "";
@@ -74,6 +75,7 @@ public class MainActivity extends Activity implements UpdaterListener, DeltaCall
 			@Override
 			public void onClick(View v) {
 				if (!filePath.isEmpty()) {
+					secretMenuTaps = 0;
 					statusText.setText(R.string.checking_file);
 					mBuilder = Utilities.buildNotification(MainActivity.this, mNotificationManager, getString(R.string.installing_ota), R.drawable.ic_stat_system_update, getString(R.string.checking_file), true, true, true, true);
 					disableButtons(true);
@@ -95,6 +97,11 @@ public class MainActivity extends Activity implements UpdaterListener, DeltaCall
 						}
 					} else {
 						startUpdate(filePath);
+					}
+				} else {
+					if(++secretMenuTaps >= 5) {
+						Intent intent = new Intent(MainActivity.this, SecretActivity.class);
+						startActivity(intent);
 					}
 				}
 			}
@@ -246,11 +253,9 @@ public class MainActivity extends Activity implements UpdaterListener, DeltaCall
 		}
 		updateStatusProgress(100, 0, true);
 		updateStatusText(R.string.pulling_boot);
-		Utilities.pullBootimage(getString(R.string.boot_block_name) + currentSlot, Environment.getExternalStorageDirectory() + "/boot.img");
 		updateStatusProgress(100, 0, false);
 		updateStatusText(R.string.downloading_magisk);
 		magiskInstaller = new MagiskInstaller(MainActivity.this);
-		magiskInstaller.setBootImagePath(Environment.getExternalStorageDirectory() + "/boot.img");
 		magiskInstaller.setCallback(this);
 		magiskInstaller.startDownload();
 	}

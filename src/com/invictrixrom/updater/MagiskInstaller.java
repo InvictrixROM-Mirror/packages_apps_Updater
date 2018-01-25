@@ -7,7 +7,6 @@ import java.io.BufferedInputStream;
 
 import android.content.Context;
 import android.os.Environment;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -23,12 +22,7 @@ import java.io.FileInputStream;
 public class MagiskInstaller {
 
 	private MagiskCallback callback;
-	private String bootImagePath = "";
 	private Context context;
-
-	public void setBootImagePath(String bootImagePath) {
-		this.bootImagePath = bootImagePath;
-	}
 
 	public void setCallback(MagiskCallback callback) {
 		this.callback = callback;
@@ -112,6 +106,7 @@ public class MagiskInstaller {
 		}
 
 		private void extractMagisk(String magiskPath) {
+			System.out.println("BLUG: extractMagisk(): magiskOut: " + new File(magiskPath).getParentFile().getAbsolutePath() + "/magiskout");
 			try {
 				File outDir = new File(new File(magiskPath).getParentFile().getAbsolutePath() + "/magiskout");
 				outDir.mkdir();
@@ -138,23 +133,36 @@ public class MagiskInstaller {
 				outFile = new File(outDir.getAbsolutePath() + "/update-binary");
 				magiskOut = new FileOutputStream(outFile);
 				Utilities.extractFromZip(magiskPath, "META-INF/com/google/android/update-binary", magiskOut);
+				System.out.println("BLUG: extractMagisk(): done");
 
 			} catch (Exception ex) {
 				ex.printStackTrace();
+				System.out.println("BLUG: extractMagisk(): failed");
 			}
 		}
 
 		private void modBootImage(String magiskPath) {
+			System.out.println("BLUG: modBootImage(): magiskPath: " + magiskPath);
 			Shell.runCommand("chmod 755 " + magiskPath + "/*");
-			Shell.runCommand("cp " + bootImagePath + " " + magiskPath + "/boot.img");
+			String currentSlot = Utilities.getSystemProperty(context.getString(R.string.slot_prop));
+			if (postInstall) {
+				if (currentSlot.equals("_b")) {
+					currentSlot = "_a";
+				} else {
+					currentSlot = "_b";
+				}
+			}
+			Utilities.pullBootimage(context.getString(R.string.boot_block_name) + currentSlot, magiskPath + "/boot.img");
 			Shell.runCommand("cd " + magiskPath);
 
 			boolean highcomp = false;
 
-			Shell.runCommand("KEEPFORCEENCRYPT=false KEEPVERITY=false HIGHCOMP=" + highcomp + " sh " + magiskPath + "/update-binary indep " + magiskPath + "/boot_patch.sh " + bootImagePath);
+			Shell.runCommand("KEEPFORCEENCRYPT=false KEEPVERITY=false HIGHCOMP=" + highcomp + " sh " + magiskPath + "/update-binary indep " + magiskPath + "/boot_patch.sh " + magiskPath + "/boot.img");
+			System.out.println("BLUG: modBootImage(): done");
 		}
 
 		private void signBootImage(String magiskPath) {
+			System.out.println("BLUG: signBootImage(): magiskPath: " + magiskPath);
 			File signed = new File(magiskPath + "/signed.img");
 			AssetManager assets = context.getAssets();
 			try (
@@ -166,10 +174,12 @@ public class MagiskInstaller {
 				SignBoot.doSignature("/boot", in, out, keyIn, certIn);
 			} catch (Exception ex) {
 				ex.printStackTrace();
+				System.out.println("BLUG: signBootImage(): failed");
 			}
+			System.out.println("BLUG: signBootImage(): done");
 		}
 
-		private void flashBoot() {
+		private void flashBoot(String magiskPath) {
 			String currentSlot = Utilities.getSystemProperty(context.getString(R.string.slot_prop));
 			if (postInstall) {
 				if (currentSlot.equals("_b")) {
@@ -178,7 +188,7 @@ public class MagiskInstaller {
 					currentSlot = "_b";
 				}
 			}
-			Utilities.pullBootimage(Environment.getExternalStorageDirectory() + "/boot.img", context.getString(R.string.boot_block_name) + currentSlot);
+			Utilities.pullBootimage(magiskPath + "/boot.img", context.getString(R.string.boot_block_name) + currentSlot);
 		}
 
 		@Override
@@ -192,7 +202,7 @@ public class MagiskInstaller {
 			modBootImage(new File(magiskPath).getParentFile().getAbsolutePath() + "/magiskout");
 
 			boolean isSigned = false;
-			try (InputStream in = new FileInputStream(new File(magiskPath + "/boot.img"))) {
+			try (InputStream in = new FileInputStream(new File(new File(magiskPath).getParentFile().getAbsolutePath() + "/magiskout/boot.img"))) {
 				isSigned = SignBoot.verifySignature(in, null);
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -200,16 +210,16 @@ public class MagiskInstaller {
 
 			if (isSigned) {
 				publishProgress(R.string.signing_boot_image);
-				signBootImage(magiskPath);
+				signBootImage(new File(magiskPath).getParentFile().getAbsolutePath() + "/magiskout");
 
-				Shell.runCommand("mv -f signed.img " + bootImagePath);
+				Shell.runCommand("mv -f signed.img " + new File(magiskPath).getParentFile().getAbsolutePath() + "/magiskout/boot.img");
 			} else {
-				Shell.runCommand("mv -f new-boot.img " + bootImagePath);
+				Shell.runCommand("mv -f new-boot.img " + new File(magiskPath).getParentFile().getAbsolutePath() + "/magiskout/boot.img");
 			}
 			Shell.closeShell();
 
 			publishProgress(R.string.installing_boot_image);
-			flashBoot();
+			flashBoot(new File(magiskPath).getParentFile().getAbsolutePath() + "/magiskout");
 			return true;
 		}
 
